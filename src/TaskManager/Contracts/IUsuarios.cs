@@ -2,7 +2,8 @@ namespace TaskManager.Contracts;
 
 /// <summary>
 /// Interfaz CONSUMIDA de UserManager (arista "valida asignado").
-/// TaskManager la usa para confirmar que el usuario asignado existe.
+/// TaskManager obtiene el usuario una vez al asignar para validar su existencia
+/// y materializar su nombre junto a la tarea.
 /// </summary>
 public record UserDto(Guid Id, string Name, string Email);
 

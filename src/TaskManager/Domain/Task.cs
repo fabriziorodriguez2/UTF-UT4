@@ -14,6 +14,10 @@ public class TaskItem
     // Usuario asignado. Guid.Empty mientras la tarea no tiene responsable.
     public Guid Assignee { get; set; }
 
+    // Materialized View: nombre resuelto al asignar, para leer el tablero localmente.
+    // Null si no tiene responsable o si es una asignación anterior a esta vista.
+    public string? AssigneeName { get; set; }
+
     public string Title { get; set; } = string.Empty;
 
     // Ver TaskStatuses para los valores válidos.

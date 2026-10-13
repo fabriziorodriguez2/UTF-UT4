@@ -29,7 +29,7 @@ public class TaskRepository
     public TaskItem? FindById(Guid id) => _db.Tasks.Find(id);
 
     public List<TaskItem> FindByProject(Guid projectId) =>
-        _db.Tasks.Where(t => t.ProjectId == projectId).ToList();
+        _db.Tasks.AsNoTracking().Where(t => t.ProjectId == projectId).ToList();
 
     /// <summary>Cantidad de tareas asignadas a un usuario (carga de trabajo).</summary>
     public int CountInProjectByUser(Guid userId) =>
