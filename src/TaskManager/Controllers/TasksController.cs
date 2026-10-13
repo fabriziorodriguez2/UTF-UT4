@@ -66,5 +66,5 @@ public class TasksController : ControllerBase
     }
 
     private static TaskResponse Map(TaskItem t) =>
-        new(t.Id, t.ProjectId, t.Assignee, t.Title, t.Status);
+        new(t.Id, t.ProjectId, t.Assignee, t.Title, t.Status, t.AssigneeName);
 }

@@ -62,6 +62,11 @@ using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<TasksDbContext>();
     db.Database.EnsureCreated();
+    // EnsureCreated no actualiza tablas existentes. Esta ampliación de la demo
+    // conserva los datos y también se puede ejecutar al reiniciar cada réplica.
+    db.Database.ExecuteSqlRaw("""
+        ALTER TABLE "Tasks" ADD COLUMN IF NOT EXISTS "AssigneeName" text NULL;
+        """);
 }
 
 // Identifica qué réplica respondió (demo de escalabilidad horizontal).

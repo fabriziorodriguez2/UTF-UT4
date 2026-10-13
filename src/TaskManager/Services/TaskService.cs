@@ -57,14 +57,15 @@ public class TaskService : ITareas
 
     public TaskItem AssignTask(Guid taskId, Guid userId)
     {
-        // Arista "valida asignado".
-        if (!_usuarios.Exist(userId))
-            throw new BusinessRuleException($"El usuario {userId} no existe.");
-
         var task = _repository.FindById(taskId)
                    ?? throw new NotFoundException($"La tarea {taskId} no existe.");
 
+        // Una sola llamada valida el usuario y obtiene el nombre de la vista.
+        var user = _usuarios.GetById(userId)
+                   ?? throw new BusinessRuleException($"El usuario {userId} no existe.");
+
         task.Assignee = userId;
+        task.AssigneeName = user.Name;
         _repository.Save(task);
         return task;
     }
@@ -87,8 +88,8 @@ public class TaskService : ITareas
             if (!_proyectos.IsOpen(projectId))
                 throw new BusinessRuleException($"El proyecto {projectId} no existe o está cerrado.");
 
-            if (!_usuarios.Exist(userId))
-                throw new BusinessRuleException($"El usuario {userId} no existe.");
+            var user = _usuarios.GetById(userId)
+                       ?? throw new BusinessRuleException($"El usuario {userId} no existe.");
 
             var task = new TaskItem
             {
@@ -96,7 +97,8 @@ public class TaskService : ITareas
                 ProjectId = projectId,
                 Title = title,
                 Status = TaskStatuses.Todo,
-                Assignee = userId
+                Assignee = userId,
+                AssigneeName = user.Name
             };
 
             _db.Tasks.Add(task);
@@ -137,6 +139,7 @@ public class TaskService : ITareas
         }
     }
 
+    // La vista ya está materializada: una consulta local, sin llamadas a otros servicios.
     public List<TaskItem> GetTasksByProject(Guid projectId) =>
         _repository.FindByProject(projectId);
 
