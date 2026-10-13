@@ -1,0 +1,307 @@
+{
+  "info": {
+    "name": "Mini Gestor de Proyectos - TFU UT3 (Grupo 3)",
+    "description": "Colección para probar la API a través del ApiGateway (http://localhost:8080). Corré primero 'Register' (o 'Login') para que el token y el userId queden guardados automáticamente y se usen en el resto de los requests.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [{ "key": "token", "value": "{{token}}", "type": "string" }]
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:8080" },
+    { "key": "token", "value": "" },
+    { "key": "userId", "value": "" },
+    { "key": "projectId", "value": "" },
+    { "key": "taskId", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "1. Auth (UserManager)",
+      "item": [
+        {
+          "name": "Register",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Mateo\",\n  \"email\": \"mateo+{{$randomInt}}@ucu.edu.uy\",\n  \"password\": \"secret123\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/auth/register", "host": ["{{baseUrl}}"], "path": ["auth", "register"] },
+            "description": "Ruta pública (no exige JWT). Devuelve un token nuevo y guarda token + userId para el resto de la colección."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.collectionVariables.set('token', body.token);",
+                  "const payload = JSON.parse(atob(body.token.split('.')[1].replace(/-/g,'+').replace(/_/g,'/')));",
+                  "pm.collectionVariables.set('userId', payload.sub);",
+                  "console.log('userId guardado:', payload.sub);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Login",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"mateo@ucu.edu.uy\",\n  \"password\": \"secret123\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/auth/login", "host": ["{{baseUrl}}"], "path": ["auth", "login"] },
+            "description": "Usar si ya registraste ese email antes (Register vuelve a fallar con 409 en el segundo intento)."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.collectionVariables.set('token', body.token);",
+                  "const payload = JSON.parse(atob(body.token.split('.')[1].replace(/-/g,'+').replace(/_/g,'/')));",
+                  "pm.collectionVariables.set('userId', payload.sub);"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "2. Users (UserManager)",
+      "item": [
+        {
+          "name": "Get all users",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/users", "host": ["{{baseUrl}}"], "path": ["users"] }
+          }
+        },
+        {
+          "name": "Get user by id",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/users/{{userId}}", "host": ["{{baseUrl}}"], "path": ["users", "{{userId}}"] }
+          }
+        },
+        {
+          "name": "Check user exists",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/users/{{userId}}/exists", "host": ["{{baseUrl}}"], "path": ["users", "{{userId}}", "exists"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "3. Projects (ProjectManager)",
+      "item": [
+        {
+          "name": "Create project",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"ownerId\": \"{{userId}}\",\n  \"name\": \"TFU UT3\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/projects", "host": ["{{baseUrl}}"], "path": ["projects"] }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('201 Created', () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set('projectId', pm.response.json().id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get project by id",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/projects/{{projectId}}", "host": ["{{baseUrl}}"], "path": ["projects", "{{projectId}}"] }
+          }
+        },
+        {
+          "name": "Get projects by user",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/projects?userId={{userId}}",
+              "host": ["{{baseUrl}}"], "path": ["projects"],
+              "query": [{ "key": "userId", "value": "{{userId}}" }]
+            }
+          }
+        },
+        {
+          "name": "Is project open",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/projects/{{projectId}}/is-open", "host": ["{{baseUrl}}"], "path": ["projects", "{{projectId}}", "is-open"] }
+          }
+        },
+        {
+          "name": "Close project",
+          "request": {
+            "method": "POST",
+            "url": { "raw": "{{baseUrl}}/projects/{{projectId}}/close", "host": ["{{baseUrl}}"], "path": ["projects", "{{projectId}}", "close"] },
+            "description": "Devuelve 204. Ojo: si cerrás el proyecto, TaskManager va a rechazar crear tareas nuevas en él (IsOpen pasa a false)."
+          }
+        }
+      ]
+    },
+    {
+      "name": "4. Tasks (TaskManager)",
+      "item": [
+        {
+          "name": "Create task",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"projectId\": \"{{projectId}}\",\n  \"title\": \"Escribir el informe\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/tasks", "host": ["{{baseUrl}}"], "path": ["tasks"] }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('201 Created', () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set('taskId', pm.response.json().id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Assign task",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"userId\": \"{{userId}}\"\n}" },
+            "url": { "raw": "{{baseUrl}}/tasks/{{taskId}}/assign", "host": ["{{baseUrl}}"], "path": ["tasks", "{{taskId}}", "assign"] }
+          }
+        },
+        {
+          "name": "Change task status",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"status\": \"InProgress\"\n}" },
+            "url": { "raw": "{{baseUrl}}/tasks/{{taskId}}/status", "host": ["{{baseUrl}}"], "path": ["tasks", "{{taskId}}", "status"] },
+            "description": "Estados válidos: Todo, InProgress, Done."
+          }
+        },
+        {
+          "name": "Get task by id",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/tasks/{{taskId}}", "host": ["{{baseUrl}}"], "path": ["tasks", "{{taskId}}"] }
+          }
+        },
+        {
+          "name": "Get tasks by project",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/tasks?projectId={{projectId}}",
+              "host": ["{{baseUrl}}"], "path": ["tasks"],
+              "query": [{ "key": "projectId", "value": "{{projectId}}" }]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "5. Demos de conceptos",
+      "item": [
+        {
+          "name": "ACID - Create+Assign con usuario inexistente (debe fallar y no crear nada)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"projectId\": \"{{projectId}}\",\n  \"title\": \"Tarea que no debe quedar\",\n  \"userId\": \"00000000-0000-0000-0000-000000000000\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/tasks/create-and-assign", "host": ["{{baseUrl}}"], "path": ["tasks", "create-and-assign"] },
+            "description": "Correr 'Get tasks by project' antes y después de este request: la cantidad de tareas tiene que ser igual (rollback de la transacción)."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('409 Conflict (rollback)', () => pm.response.to.have.status(409));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Escalabilidad - Get tasks by project (repetir con Runner)",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/tasks?projectId={{projectId}}",
+              "host": ["{{baseUrl}}"], "path": ["tasks"],
+              "query": [{ "key": "projectId", "value": "{{projectId}}" }]
+            },
+            "description": "Antes de usar este request: 'docker compose up -d --scale taskmanager=3'. Corré este request varias veces (o usá el botón Runner de Postman con 20-30 iteraciones) y mirá el header de respuesta 'X-Served-By' en cada una: si cambia de valor entre corridas, distintas réplicas de TaskManager están respondiendo."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "console.log('X-Served-By:', pm.response.headers.get('X-Served-By'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Sin estado - request sin token (debe dar 401)",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/projects?userId={{userId}}",
+              "host": ["{{baseUrl}}"], "path": ["projects"],
+              "query": [{ "key": "userId", "value": "{{userId}}" }]
+            },
+            "description": "Mismo endpoint que 'Get projects by user' pero sin Authorization. Tiene que dar 401 en cualquier réplica."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('401 Unauthorized', () => pm.response.to.have.status(401));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

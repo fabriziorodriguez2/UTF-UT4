@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>ApiGateway</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Validación local del JWT (servicios sin estado) -->
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="8.0.8" />
+    <PackageReference Include="System.IdentityModel.Tokens.Jwt" Version="8.0.1" />
+    <!-- Alternativa recomendada para el reverse proxy / balanceo: YARP.
+         Se deja documentada; el esqueleto reenvía con HttpClient para que se vea
+         explícito el paso de "enrutar / balancear". -->
+    <!-- <PackageReference Include="Yarp.ReverseProxy" Version="2.1.0" /> -->
+  </ItemGroup>
+
+</Project>

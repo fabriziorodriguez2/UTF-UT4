@@ -1,0 +1,121 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Mini gestor de proyectos — orquestación de contenedores.
+#
+#   - 1 contenedor por COMPONENTE del diagrama (gateway + 3 servicios).
+#   - 1 base PostgreSQL por componente de negocio (ACID / aislamiento de datos).
+#   - Red interna 'backend' para que el gateway alcance a los servicios por nombre.
+#
+# Levantar todo:        docker compose up --build
+# Escalar un servicio:  docker compose up --scale taskmanager=3
+# ─────────────────────────────────────────────────────────────────────────────
+services:
+
+  # ── Único punto de entrada. Enruta / balancea + valida el JWT. ──────────────
+  apigateway:
+    build:
+      context: .
+      dockerfile: src/ApiGateway/Dockerfile
+    ports:
+      - "${GATEWAY_PORT:-8080}:8080"
+    environment:
+      - ASPNETCORE_URLS=http://+:8080
+      - Jwt__Secret=${JWT_SECRET}
+      - Jwt__Issuer=${JWT_ISSUER}
+      - Jwt__Audience=${JWT_AUDIENCE}
+      # Nombres de servicio internos hacia los que enruta (Docker DNS balancea réplicas)
+      - Services__Users=http://usermanager:8080
+      - Services__Projects=http://projectmanager:8080
+      - Services__Tasks=http://taskmanager:8080
+    depends_on:
+      - usermanager
+      - projectmanager
+      - taskmanager
+    networks: [backend]
+
+  # ── UserManager: autenticación + usuarios ───────────────────────────────────
+  usermanager:
+    build:
+      context: .
+      dockerfile: src/UserManager/Dockerfile
+    environment:
+      - ASPNETCORE_URLS=http://+:8080
+      - Jwt__Secret=${JWT_SECRET}
+      - Jwt__Issuer=${JWT_ISSUER}
+      - Jwt__Audience=${JWT_AUDIENCE}
+      - ConnectionStrings__Db=Host=users-db;Database=${USERS_DB};Username=${POSTGRES_USER};Password=${POSTGRES_PASSWORD}
+    depends_on:
+      - users-db
+    networks: [backend]
+
+  # ── ProjectManager: ABM de proyectos ────────────────────────────────────────
+  projectmanager:
+    build:
+      context: .
+      dockerfile: src/ProjectManager/Dockerfile
+    environment:
+      - ASPNETCORE_URLS=http://+:8080
+      - Jwt__Secret=${JWT_SECRET}
+      - Jwt__Issuer=${JWT_ISSUER}
+      - Jwt__Audience=${JWT_AUDIENCE}
+      - ConnectionStrings__Db=Host=projects-db;Database=${PROJECTS_DB};Username=${POSTGRES_USER};Password=${POSTGRES_PASSWORD}
+      - Services__Users=http://usermanager:8080   # consume IUsuarios (valida dueño)
+    depends_on:
+      - projects-db
+      - usermanager
+    networks: [backend]
+
+  # ── TaskManager: ABM de tareas ──────────────────────────────────────────────
+  taskmanager:
+    build:
+      context: .
+      dockerfile: src/TaskManager/Dockerfile
+    environment:
+      - ASPNETCORE_URLS=http://+:8080
+      - Jwt__Secret=${JWT_SECRET}
+      - Jwt__Issuer=${JWT_ISSUER}
+      - Jwt__Audience=${JWT_AUDIENCE}
+      - ConnectionStrings__Db=Host=tasks-db;Database=${TASKS_DB};Username=${POSTGRES_USER};Password=${POSTGRES_PASSWORD}
+      - Services__Projects=http://projectmanager:8080  # consume IProyectos (valida proyecto abierto)
+      - Services__Users=http://usermanager:8080         # consume IUsuarios (valida asignado)
+    depends_on:
+      - tasks-db
+      - projectmanager
+      - usermanager
+    networks: [backend]
+
+  # ── Bases de datos (una por componente) ─────────────────────────────────────
+  users-db:
+    image: postgres:16-alpine
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${USERS_DB}
+    volumes: [users-data:/var/lib/postgresql/data]
+    networks: [backend]
+
+  projects-db:
+    image: postgres:16-alpine
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${PROJECTS_DB}
+    volumes: [projects-data:/var/lib/postgresql/data]
+    networks: [backend]
+
+  tasks-db:
+    image: postgres:16-alpine
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${TASKS_DB}
+    volumes: [tasks-data:/var/lib/postgresql/data]
+    networks: [backend]
+
+networks:
+  backend:
+    driver: bridge
+
+volumes:
+  users-data:
+  projects-data:
+  tasks-data:

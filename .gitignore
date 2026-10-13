@@ -1,0 +1,15 @@
+# .NET
+bin/
+obj/
+*.user
+out/
+
+# Rider / VS
+.idea/
+.vs/
+
+# Env local overrides
+.env
+
+# OS
+.DS_Store
