@@ -26,6 +26,9 @@ services:
       - Services__Users=http://usermanager:8080
       - Services__Projects=http://projectmanager:8080
       - Services__Tasks=http://taskmanager:8080
+      # Gateway Offloading: rate limiting centralizado (tunable sin reconstruir)
+      - RateLimit__PermitLimit=${RATELIMIT_PERMIT:-50}
+      - RateLimit__WindowSeconds=${RATELIMIT_WINDOW:-10}
     depends_on:
       - usermanager
       - projectmanager

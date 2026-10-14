@@ -61,6 +61,15 @@ public class GatewayRouter : IApiRest
                 outgoing.Content?.Headers.TryAddWithoutValidation(header.Key, header.Value.ToArray());
         }
 
+        // GATEWAY OFFLOADING: correlation-id centralizado. El gateway lo genera si
+        // la request no lo trae y lo propaga aguas abajo; los servicios no tienen
+        // que crearlo ni coordinarlo. Permite trazar una request entre componentes.
+        var correlationId = request.Headers["X-Correlation-Id"].FirstOrDefault();
+        if (string.IsNullOrWhiteSpace(correlationId))
+            correlationId = Guid.NewGuid().ToString("n");
+        outgoing.Headers.Remove("X-Correlation-Id");
+        outgoing.Headers.TryAddWithoutValidation("X-Correlation-Id", correlationId);
+
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(context.RequestAborted);
         timeout.CancelAfter(TimeSpan.FromSeconds(100));
         try
@@ -74,6 +83,8 @@ public class GatewayRouter : IApiRest
                 if (!excludedResponseHeaders.Contains(header.Key))
                     context.Response.Headers[header.Key] = header.Value.ToArray();
             }
+            // Devolvemos el correlation-id al cliente para que pueda referenciarlo.
+            context.Response.Headers["X-Correlation-Id"] = correlationId;
             if (!HttpMethods.IsHead(request.Method))
                 await response.Content.CopyToAsync(context.Response.Body, timeout.Token);
         }
