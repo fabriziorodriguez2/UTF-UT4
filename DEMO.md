@@ -87,6 +87,7 @@
    los atendieron aunque ninguna vio el login original.
 4. Al final, un pedido sin token da 401 en cualquier réplica.
 
+
 ## 6. Materialized View (UT4)
 
 La vista del tablero se guarda en la propia tabla `Tasks`: cada tarea tiene
@@ -162,3 +163,17 @@ sin servicios externos con SQLite:
 ```bash
 dotnet test tests/TaskManager.Tests/TaskManager.Tests.csproj
 ```
+
+## 7. Cache-Aside (Redis)
+
+1. Correr:
+   ```bash
+   ./scripts/demo-05-cache-aside.sh
+   ```
+2. Escala TaskManager a 3 réplicas, crea un proyecto y le agrega 6 tareas.
+   Cada tarea valida que el proyecto esté abierto (`IsOpen`).
+3. En los logs se ve un solo `Cache MISS` (la única llamada HTTP a
+   ProjectManager) y el resto `Cache HIT`, aunque las tareas las atiendan
+   réplicas distintas: el caché en Redis es compartido.
+4. Al final muestra el TTL restante de la entrada en Redis (30 s por defecto),
+   que acota cuánto puede estar desactualizado el dato.

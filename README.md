@@ -59,7 +59,8 @@ UT3-TFUGrupo3/
     ├── demo-01-componentes.sh       #   API REST end-to-end (crear user/proyecto/tarea)
     ├── demo-02-escalabilidad.sh     #   levantar réplicas y ver el balanceo
     ├── demo-03-acid.sh              #   transacción atómica (crear+asignar)
-    └── demo-04-sin-estado.sh        #   mismo JWT servido por cualquier réplica
+    ├── demo-04-sin-estado.sh        #   mismo JWT servido por cualquier réplica
+    └── demo-05-cache-aside.sh       #   validaciones entre servicios cacheadas en Redis
 ```
 
 Cada componente de negocio sigue la misma organización interna:

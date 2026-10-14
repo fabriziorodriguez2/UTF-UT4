@@ -3,6 +3,7 @@
 #
 #   - 1 contenedor por COMPONENTE del diagrama (gateway + 3 servicios).
 #   - 1 base PostgreSQL por componente de negocio (ACID / aislamiento de datos).
+#   - Redis como caché distribuido (Cache-Aside) compartido por las réplicas.
 #   - Red interna 'backend' para que el gateway alcance a los servicios por nombre.
 #
 # Levantar todo:        docker compose up --build
@@ -62,8 +63,11 @@ services:
       - Jwt__Audience=${JWT_AUDIENCE}
       - ConnectionStrings__Db=Host=projects-db;Database=${PROJECTS_DB};Username=${POSTGRES_USER};Password=${POSTGRES_PASSWORD}
       - Services__Users=http://usermanager:8080   # consume IUsuarios (valida dueño)
+      - ConnectionStrings__Redis=redis:6379,abortConnect=false,connectTimeout=1000,syncTimeout=1000
+      - Cache__TtlSeconds=${CACHE_TTL_SECONDS:-30}
     depends_on:
       - projects-db
+      - redis
       - usermanager
     networks: [backend]
 
@@ -80,8 +84,11 @@ services:
       - ConnectionStrings__Db=Host=tasks-db;Database=${TASKS_DB};Username=${POSTGRES_USER};Password=${POSTGRES_PASSWORD}
       - Services__Projects=http://projectmanager:8080  # consume IProyectos (valida proyecto abierto)
       - Services__Users=http://usermanager:8080         # consume IUsuarios (valida asignado)
+      - ConnectionStrings__Redis=redis:6379,abortConnect=false,connectTimeout=1000,syncTimeout=1000
+      - Cache__TtlSeconds=${CACHE_TTL_SECONDS:-30}
     depends_on:
       - tasks-db
+      - redis
       - projectmanager
       - usermanager
     networks: [backend]
@@ -112,6 +119,12 @@ services:
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
       - POSTGRES_DB=${TASKS_DB}
     volumes: [tasks-data:/var/lib/postgresql/data]
+    networks: [backend]
+
+  # ── Caché distribuido (Cache-Aside), compartido por todas las réplicas ─────
+  # No es autoritativo: se reconstruye desde las bases, por eso no tiene volumen.
+  redis:
+    image: redis:7-alpine
     networks: [backend]
 
 networks:

@@ -2,6 +2,7 @@ using System.Text;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
+using TaskManager.Caching;
 using TaskManager.Contracts;
 using TaskManager.Interfaces;
 using TaskManager.Middleware;
@@ -25,13 +26,24 @@ builder.Services.AddScoped<ITareas>(sp => sp.GetRequiredService<TaskService>());
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddTransient<AuthForwardingHandler>();
 
-builder.Services.AddHttpClient<IProyectos, ProyectosHttpClient>(c =>
+builder.Services.AddHttpClient<ProyectosHttpClient>(c =>
         c.BaseAddress = new Uri(builder.Configuration["Services:Projects"]!)) // valida proyecto abierto
     .AddHttpMessageHandler<AuthForwardingHandler>();
 
-builder.Services.AddHttpClient<IUsuarios, UsuariosHttpClient>(c =>
+builder.Services.AddHttpClient<UsuariosHttpClient>(c =>
         c.BaseAddress = new Uri(builder.Configuration["Services:Users"]!))    // valida asignado
     .AddHttpMessageHandler<AuthForwardingHandler>();
+
+// ── Cache-Aside: Redis compartido por todas las réplicas ─────────────────────
+// Las interfaces consumidas se decoran: primero el caché, en un miss la llamada HTTP.
+builder.Services.AddStackExchangeRedisCache(opt =>
+{
+    opt.Configuration = builder.Configuration.GetConnectionString("Redis");
+    opt.InstanceName = "mgp:";
+});
+builder.Services.AddSingleton<CacheAside>();
+builder.Services.AddScoped<IProyectos, CachedProyectos>();
+builder.Services.AddScoped<IUsuarios, CachedUsuarios>();
 
 // ── Autenticación stateless: validación local del JWT con el secreto ─────────
 var jwt = builder.Configuration.GetSection("Jwt");

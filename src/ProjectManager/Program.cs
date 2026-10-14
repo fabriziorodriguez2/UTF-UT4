@@ -2,6 +2,7 @@ using System.Text;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
+using ProjectManager.Caching;
 using ProjectManager.Contracts;
 using ProjectManager.Interfaces;
 using ProjectManager.Middleware;
@@ -25,9 +26,19 @@ builder.Services.AddScoped<IProyectos>(sp => sp.GetRequiredService<ProjectServic
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddTransient<AuthForwardingHandler>();
 
-builder.Services.AddHttpClient<IUsuarios, UsuariosHttpClient>(c =>
+builder.Services.AddHttpClient<UsuariosHttpClient>(c =>
         c.BaseAddress = new Uri(builder.Configuration["Services:Users"]!))  // valida dueño
     .AddHttpMessageHandler<AuthForwardingHandler>();
+
+// ── Cache-Aside: Redis compartido por todas las réplicas ─────────────────────
+// IUsuarios se decora: primero el caché, en un miss la llamada HTTP.
+builder.Services.AddStackExchangeRedisCache(opt =>
+{
+    opt.Configuration = builder.Configuration.GetConnectionString("Redis");
+    opt.InstanceName = "mgp:";
+});
+builder.Services.AddSingleton<CacheAside>();
+builder.Services.AddScoped<IUsuarios, CachedUsuarios>();
 
 // ── Autenticación stateless: validación local del JWT con el secreto ─────────
 var jwt = builder.Configuration.GetSection("Jwt");
