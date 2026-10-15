@@ -1,3 +1,4 @@
+using System.Net;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Http.Resilience;
@@ -21,12 +22,19 @@ public static class DependencyResilience
         this IHttpClientBuilder client, IConfiguration configuration, string dependency)
     {
         var section = configuration.GetSection("CircuitBreaker");
+        var retrysection = configuration.GetSection("Retry");
         client.ConfigureHttpClient(http => http.Timeout = Timeout.InfiniteTimeSpan);
         client.AddHttpMessageHandler(() => new DependencyErrorHandler(dependency));
         client.AddResilienceHandler("dependency", (pipeline, context) =>
         {
-            var logger = context.ServiceProvider.GetRequiredService<ILoggerFactory>()
-                .CreateLogger("CircuitBreaker");
+            var loggerFactory = context.ServiceProvider.GetRequiredService<ILoggerFactory>();
+            var logger = loggerFactory.CreateLogger("CircuitBreaker");
+            var maxRetries = retrysection.GetValue("MaxRetryAttempts",2);
+
+              // Orden (de afuera hacia adentro):
+            //   CircuitBreaker -> timeout total -> Retry -> timeout por intento
+            // Si el circuito está abierto se rechaza antes del Retry:
+            // nunca se reintenta contra un circuito abierto.
             pipeline.AddCircuitBreaker(new HttpCircuitBreakerStrategyOptions
             {
                 FailureRatio = section.GetValue("FailureRatio", 0.5),
@@ -53,12 +61,49 @@ public static class DependencyResilience
                     return default;
                 }
             });
+            if (maxRetries > 0){
+                //Acota el tiempo total (intentos + espera)
+                pipeline.AddTimeout(TimeSpan.FromSeconds(retrysection.GetValue("TotalTimeoutSeconds", 8)));
+                pipeline.AddRetry(BuildRetryOptions(
+                    retrysection, dependency, maxRetries, loggerFactory.CreateLogger("Retry")
+                ));
+            }
             // Dentro del breaker para que el timeout cuente como fallo. Sin retries.
             pipeline.AddTimeout(TimeSpan.FromSeconds(section.GetValue("TimeoutSeconds", 2)));
         });
         client.AddHttpMessageHandler(sp => new DependencyAttemptHandler(dependency,
             sp.GetRequiredService<ILoggerFactory>().CreateLogger("CircuitBreaker")));
         return client;
+    }
+
+    private static HttpRetryStrategyOptions BuildRetryOptions(
+        IConfigurationSection section, string dependency, int maxRetries, ILogger logger)
+
+    {
+        var options = new HttpRetryStrategyOptions
+        {
+            MaxRetryAttempts = maxRetries,
+            Delay = TimeSpan.FromMilliseconds(section.GetValue("DelayMilliseconds",200)),
+            BackoffType = DelayBackoffType.Exponential,
+            UseJitter = true,
+
+            ShouldHandle = new PredicateBuilder<HttpResponseMessage>()
+                .Handle<HttpRequestException>()
+                .Handle<TimeoutRejectedException>()
+                .HandleResult(response => (int)response.StatusCode >= 500 || response.StatusCode == HttpStatusCode.RequestTimeout),
+        
+            OnRetry = args =>
+            {
+                var reason = args.Outcome.Exception is {} ex 
+                    ? ex.GetType().Name : $"HTTP {(int?)args.Outcome.Result?.StatusCode}";
+                logger.LogWarning("Retry {Dependency}: intento {Attempt}/{Total} fallo ({Reason}); reintento en {Delay} ms",
+                    dependency, args.AttemptNumber + 1, maxRetries + 1, reason, (int)args.RetryDelay.TotalMilliseconds);
+                args.Outcome.Result?.Dispose();
+                return default;
+            }
+        };
+
+    return options;
     }
 }
 

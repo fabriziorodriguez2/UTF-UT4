@@ -13,6 +13,7 @@
    ```
    > Si el puerto **8080** está ocupado en tu máquina, levantá el gateway en otro
    > puerto y usalo en los scripts:
+   >
    > ```bash
    > GATEWAY_PORT=8090 docker compose up --build      # terminal 1
    > export GW=http://localhost:8090                  # terminal 2 (antes de los scripts)
@@ -86,7 +87,6 @@
 3. Todos los pedidos responden 200, y el script muestra que distintas réplicas
    los atendieron aunque ninguna vio el login original.
 4. Al final, un pedido sin token da 401 en cualquier réplica.
-
 
 ## 6. Materialized View (UT4)
 
@@ -178,7 +178,6 @@ dotnet test tests/TaskManager.Tests/TaskManager.Tests.csproj
 4. Al final muestra el TTL restante de la entrada en Redis (30 s por defecto),
    que acota cuánto puede estar desactualizado el dato.
 
-
 ## 8. Circuit Breaker (UT4)
 
 Con Docker Desktop abierto, desde la raíz del repositorio, en Bash (Git Bash,
@@ -226,13 +225,13 @@ del cliente HTTP: un hit no necesita atravesar el circuito.
 
 En `appsettings.json` de ambos servicios:
 
-| Propiedad de CircuitBreaker | Valor | Significado |
-| --- | --- | --- |
-| FailureRatio | 0.5 | Abre si al menos la mitad de las llamadas observadas falla |
-| MinimumThroughput | 3 | Requiere al menos tres llamadas dentro de la ventana |
-| SamplingSeconds | 10 | Ventana de observación |
-| BreakSeconds | 15 | Tiempo abierto antes de permitir una prueba |
-| TimeoutSeconds | 2 | Límite de espera del envío HTTP hasta recibir cabeceras |
+| Propiedad de CircuitBreaker | Valor | Significado                                                |
+| --------------------------- | ----- | ---------------------------------------------------------- |
+| FailureRatio                | 0.5   | Abre si al menos la mitad de las llamadas observadas falla |
+| MinimumThroughput           | 3     | Requiere al menos tres llamadas dentro de la ventana       |
+| SamplingSeconds             | 10    | Ventana de observación                                     |
+| BreakSeconds                | 15    | Tiempo abierto antes de permitir una prueba                |
+| TimeoutSeconds              | 2     | Límite de espera del envío HTTP hasta recibir cabeceras    |
 
 Son valores didácticos. Se cuentan errores de conexión, timeouts de la política
 HTTP y respuestas 5xx. Los 4xx y las cancelaciones del llamador no abren el
@@ -257,3 +256,75 @@ exclusión de 4xx/cancelaciones, respuesta 503 y conservación de datos.
 
 Referencias: [resiliencia HTTP en .NET](https://learn.microsoft.com/en-us/dotnet/core/resilience/http-resilience)
 y [circuit breaker de Polly](https://www.pollydocs.org/strategies/circuit-breaker.html).
+
+## 9. Retry (UT4)
+
+Patrón: [Retry](https://learn.microsoft.com/es-es/azure/architecture/patterns/retry).
+Una llamada entre servicios que falla por un motivo **transitorio** (red, timeout,
+5xx) se reintenta automáticamente en lugar de fallarle de inmediato al usuario.
+
+Con Docker Desktop abierto, desde la raíz del repositorio, en Bash:
+
+```bash
+docker compose up -d --build --scale taskmanager=1
+bash scripts/demo-08-retry.sh
+```
+
+La demo requiere los valores predeterminados de `Retry` y `CircuitBreaker` y una
+sola réplica de TaskManager. Detiene UserManager y lo restaura al terminar (también
+ante un error o Ctrl+C). Comprueba que:
+
+1. Con UserManager detenido, **una sola** solicitud produce 3 intentos HTTP
+   (`Dependency HTTP attempt UserManager`) y 2 avisos `Retry UserManager: intento N/3`.
+2. Tras agotar los intentos responde HTTP 503 `dependency_unavailable`, con una
+   demora que incluye el backoff.
+3. Al restaurar UserManager la misma solicitud funciona.
+
+### Implementación y configuración
+
+Vive en `src/Shared/DependencyResilience.cs`, junto al Circuit Breaker, por lo que
+se aplica a las tres llamadas entre servicios (TaskManager → UserManager,
+TaskManager → ProjectManager, ProjectManager → UserManager). Orden de la pipeline,
+de afuera hacia adentro:
+
+```
+CircuitBreaker → timeout total → Retry → timeout por intento → HTTP
+```
+
+- **Circuito abierto:** el breaker rechaza antes de llegar al Retry, así que nunca
+  se reintenta contra un circuito abierto (lo que pide el patrón).
+- **Timeout por intento** dentro del Retry: un intento colgado se corta y se reintenta.
+- **Timeout total** acota intentos + esperas, para no bloquear al llamador (las
+  llamadas de los clientes son síncronas).
+
+En `appsettings.json` de TaskManager y ProjectManager:
+
+| Propiedad de Retry  | Valor | Significado                                                                      |
+| ------------------- | ----- | -------------------------------------------------------------------------------- |
+| MaxRetryAttempts    | 2     | Reintentos tras el intento inicial (3 intentos en total). `0` desactiva el Retry |
+| DelayMilliseconds   | 200   | Espera base; crece exponencialmente (≈200 ms, ≈400 ms) con jitter                |
+| TotalTimeoutSeconds | 8     | Tiempo máximo de la operación completa                                           |
+
+Qué se reintenta: errores de conexión, timeout de un intento, HTTP 408 y 5xx.
+**No** se reintentan los 4xx (400/401/403/404/409: reintentar daría lo mismo) ni las
+cancelaciones del llamador. Este pipeline se usa solo con llamadas idempotentes
+(hoy, todas `GET`: `Exist`, `IsOpen`, `GetById`), por lo que reintentar es seguro.
+El jitter evita que varias réplicas reintenten al mismo instante.
+
+> Como el Retry está dentro del breaker, un fallo que el reintento resuelve no
+> cuenta como fallo del circuito: el breaker solo abre ante caídas sostenidas.
+
+Pruebas sin Docker:
+
+```bash
+dotnet test tests/TaskManager.Tests/TaskManager.Tests.csproj --filter RetryTests
+```
+
+Cubren recuperación tras 503 / error de conexión / intento colgado, agotamiento de
+intentos, 4xx sin reintento, Retry desactivado, circuito abierto sin nuevos
+intentos y cancelación del llamador.
+
+> Los reintentos de PostgreSQL (`EnableRetryOnFailure`) siguen activos solo en
+> UserManager. No se habilitaron en TaskManager/ProjectManager porque
+> `TaskService` abre transacciones manuales (`BeginTransaction`), incompatibles con
+> esa opción salvo que se envuelvan en una `CreateExecutionStrategy()`.
