@@ -1,3 +1,4 @@
+using MiniGestor.Resilience;
 using TaskManager.Domain;
 
 namespace TaskManager.Middleware;
@@ -31,6 +32,12 @@ public class ExceptionHandlingMiddleware
         catch (BusinessRuleException ex)
         {
             await Write(context, StatusCodes.Status409Conflict, ex.Message);
+        }
+        catch (DependencyUnavailableException ex)
+        {
+            _logger.LogWarning("Dependencia no disponible: {Code}", ex.Code);
+            context.Response.StatusCode = StatusCodes.Status503ServiceUnavailable;
+            await context.Response.WriteAsJsonAsync(new { status = 503, detail = ex.Message, code = ex.Code });
         }
         catch (Exception ex)
         {

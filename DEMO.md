@@ -168,7 +168,7 @@ dotnet test tests/TaskManager.Tests/TaskManager.Tests.csproj
 
 1. Correr:
    ```bash
-   ./scripts/demo-05-cache-aside.sh
+   ./scripts/demo-06-cache-aside.sh
    ```
 2. Escala TaskManager a 3 réplicas, crea un proyecto y le agrega 6 tareas.
    Cada tarea valida que el proyecto esté abierto (`IsOpen`).
@@ -177,3 +177,83 @@ dotnet test tests/TaskManager.Tests/TaskManager.Tests.csproj
    réplicas distintas: el caché en Redis es compartido.
 4. Al final muestra el TTL restante de la entrada en Redis (30 s por defecto),
    que acota cuánto puede estar desactualizado el dato.
+
+
+## 8. Circuit Breaker (UT4)
+
+Con Docker Desktop abierto, desde la raíz del repositorio, en Bash (Git Bash,
+WSL o Linux/macOS) con `curl` y `jq` instalados:
+
+```bash
+docker compose up -d --build --scale taskmanager=1
+bash scripts/demo-07-circuit-breaker.sh
+```
+
+Esperar que los servicios terminen de arrancar antes de ejecutar el script.
+Para otro puerto, usar `GW=http://localhost:8090 bash scripts/demo-07-circuit-breaker.sh`.
+La demo requiere los valores predeterminados de `CircuitBreaker` y una sola
+réplica de TaskManager; no cambia la cantidad de réplicas automáticamente.
+Crea datos propios y los conserva para inspeccionarlos. Detiene temporalmente
+UserManager y siempre intenta restaurarlo con un `trap` de salida, incluso ante
+un error o una interrupción con Ctrl+C.
+
+La demo comprueba:
+
+1. Una tarea se crea y asigna normalmente, guardando el nombre del responsable.
+2. Con UserManager detenido, tres llamadas reales fallan con HTTP 503 y
+   `code: dependency_unavailable`.
+3. La siguiente devuelve HTTP 503 y `code: circuit_open`. El número de mensajes
+   `Dependency HTTP attempt UserManager` no aumenta: no se intentó la llamada.
+4. El tablero sigue disponible y conserva la asignación. Crear una tarea en otro
+   proyecto consulta ProjectManager y funciona: sus circuitos son independientes.
+5. Al volver UserManager y transcurrir el período de apertura, una solicitud
+   prueba la recuperación. Los logs muestran `Open`, `HalfOpen` y `Closed`.
+
+### Implementación y configuración
+
+`src/Shared/DependencyResilience.cs` contiene la integración de Polly mediante
+`Microsoft.Extensions.Http.Resilience`. Se compila en ProjectManager y
+TaskManager, y ambos Dockerfiles incluyen ese archivo compartido.
+Los registros `AddHttpClient` de cada `Program.cs` agregan esta protección:
+
+- TaskManager → UserManager.
+- TaskManager → ProjectManager.
+- ProjectManager → UserManager.
+
+Cada cliente tiene su propio circuito reutilizado entre solicitudes, local al
+proceso. Las réplicas no comparten el estado del breaker. La caché queda antes
+del cliente HTTP: un hit no necesita atravesar el circuito.
+
+En `appsettings.json` de ambos servicios:
+
+| Propiedad de CircuitBreaker | Valor | Significado |
+| --- | --- | --- |
+| FailureRatio | 0.5 | Abre si al menos la mitad de las llamadas observadas falla |
+| MinimumThroughput | 3 | Requiere al menos tres llamadas dentro de la ventana |
+| SamplingSeconds | 10 | Ventana de observación |
+| BreakSeconds | 15 | Tiempo abierto antes de permitir una prueba |
+| TimeoutSeconds | 2 | Límite de espera del envío HTTP hasta recibir cabeceras |
+
+Son valores didácticos. Se cuentan errores de conexión, timeouts de la política
+HTTP y respuestas 5xx. Los 4xx y las cancelaciones del llamador no abren el
+circuito. No se agregan reintentos. El timeout está dentro del breaker para que
+sus fallos se contabilicen. La lectura posterior del cuerpo no queda cubierta
+por ese timeout de la pipeline; estos clientes consumen respuestas JSON pequeñas.
+
+El middleware devuelve 503 para dependencia no disponible o circuito abierto,
+sin confundirlos con usuario inexistente (409 en la regla de negocio). Los
+clientes liberan las respuestas HTTP después de leerlas. Las asignaciones y
+la creación transaccional conservan su comportamiento ante fallos.
+
+Pruebas sin Docker:
+
+```powershell
+dotnet test MiniGestorProyectos.sln
+```
+
+Cubren apertura, rechazo sin nuevas llamadas, aislamiento entre dependencias,
+recuperación, reapertura si la prueba falla, errores de conexión, timeout,
+exclusión de 4xx/cancelaciones, respuesta 503 y conservación de datos.
+
+Referencias: [resiliencia HTTP en .NET](https://learn.microsoft.com/en-us/dotnet/core/resilience/http-resilience)
+y [circuit breaker de Polly](https://www.pollydocs.org/strategies/circuit-breaker.html).

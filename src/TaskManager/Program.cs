@@ -1,3 +1,4 @@
+using MiniGestor.Resilience;
 using System.Text;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
@@ -28,11 +29,13 @@ builder.Services.AddTransient<AuthForwardingHandler>();
 
 builder.Services.AddHttpClient<ProyectosHttpClient>(c =>
         c.BaseAddress = new Uri(builder.Configuration["Services:Projects"]!)) // valida proyecto abierto
-    .AddHttpMessageHandler<AuthForwardingHandler>();
+    .AddHttpMessageHandler<AuthForwardingHandler>()
+    .AddDependencyResilience(builder.Configuration, "ProjectManager");
 
 builder.Services.AddHttpClient<UsuariosHttpClient>(c =>
         c.BaseAddress = new Uri(builder.Configuration["Services:Users"]!))    // valida asignado
-    .AddHttpMessageHandler<AuthForwardingHandler>();
+    .AddHttpMessageHandler<AuthForwardingHandler>()
+    .AddDependencyResilience(builder.Configuration, "UserManager");
 
 // ── Cache-Aside: Redis compartido por todas las réplicas ─────────────────────
 // Las interfaces consumidas se decoran: primero el caché, en un miss la llamada HTTP.

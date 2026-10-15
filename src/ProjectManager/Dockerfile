@@ -4,6 +4,7 @@ WORKDIR /src
 COPY src/ProjectManager/ProjectManager.csproj ProjectManager/
 RUN dotnet restore ProjectManager/ProjectManager.csproj
 COPY src/ProjectManager/ ProjectManager/
+COPY src/Shared/ Shared/
 RUN dotnet publish ProjectManager/ProjectManager.csproj -c Release -o /app/publish /p:UseAppHost=false
 
 FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS runtime

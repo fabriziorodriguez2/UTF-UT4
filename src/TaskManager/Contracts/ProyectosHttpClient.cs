@@ -16,7 +16,7 @@ public class ProyectosHttpClient : IProyectos
 
     public bool IsOpen(Guid projectId)
     {
-        var resp = _http.GetAsync($"/projects/{projectId}/is-open")
+        using var resp = _http.GetAsync($"/projects/{projectId}/is-open")
                         .GetAwaiter().GetResult();
 
         if (resp.StatusCode == HttpStatusCode.NotFound)
@@ -28,7 +28,7 @@ public class ProyectosHttpClient : IProyectos
 
     public ProjectDto? GetById(Guid projectId)
     {
-        var resp = _http.GetAsync($"/projects/{projectId}")
+        using var resp = _http.GetAsync($"/projects/{projectId}")
                         .GetAwaiter().GetResult();
 
         if (resp.StatusCode == HttpStatusCode.NotFound)
