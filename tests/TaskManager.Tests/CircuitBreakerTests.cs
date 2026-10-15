@@ -16,7 +16,10 @@ public class CircuitBreakerTests
         var config = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
         {
             ["CircuitBreaker:BreakSeconds"] = "1",
-            ["CircuitBreaker:TimeoutSeconds"] = "1"
+            ["CircuitBreaker:TimeoutSeconds"] = "1",
+            ["CircuitBreaker:BreakSeconds"] = "1",
+            ["CircuitBreaker:TimeoutSeconds"] = "1",
+            ["Retry:MaxRetryAttempts"] = "0"
         }).Build();
         var services = new ServiceCollection().AddLogging();
         services.AddHttpClient("users", c => c.BaseAddress = new Uri("http://users"))
