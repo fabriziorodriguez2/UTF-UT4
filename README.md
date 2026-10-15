@@ -100,15 +100,3 @@ Escalar un componente:
 ```bash
 docker compose up --scale taskmanager=3
 ```
-
-
-## Circuit Breaker (UT4)
-
-Las llamadas HTTP de TaskManager a UserManager/ProjectManager y de
-ProjectManager a UserManager tienen circuitos independientes y timeout.
-Ante fallos repetidos se bloquean temporalmente las llamadas y se devuelve 503;
-la siguiente prueba tras el período de apertura permite recuperar el servicio.
-La caché y la lectura local del tablero siguen funcionando.
-
-Demo en Bash (requiere `curl` y `jq`): `scripts/demo-07-circuit-breaker.sh`.
-Ver [instrucciones, configuración y pruebas](DEMO.md#8-circuit-breaker-ut4).
