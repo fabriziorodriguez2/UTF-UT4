@@ -10,6 +10,7 @@ using TaskManager.Persistence;
 using TaskManager.Repositories;
 using TaskManager.Services;
 using Xunit;
+using MiniGestor.Resilience;
 
 namespace TaskManager.Tests;
 
@@ -191,6 +192,25 @@ public class MaterializedViewTests : IDisposable
         Assert.Equal(0, _users.Lookups);
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void DependencyFailurePreservesAssignmentAndRollsBackCreation(bool circuitOpen)
+    {
+        var user = AddUser("Ana");
+        var task = _service.CreateAndAssign(_projectId, "Original", user.Id);
+        _users.DependencyFailure = new DependencyUnavailableException("UserManager", circuitOpen);
+
+        Assert.Throws<DependencyUnavailableException>(() => _service.AssignTask(task.Id, Guid.NewGuid()));
+        Assert.Throws<DependencyUnavailableException>(() => _service.CreateAndAssign(_projectId, "No guardar", user.Id));
+
+        _db.ChangeTracker.Clear();
+        var saved = Assert.Single(_service.GetTasksByProject(_projectId));
+        Assert.Equal(task.Id, saved.Id);
+        Assert.Equal(user.Id, saved.Assignee);
+        Assert.Equal("Ana", saved.AssigneeName);
+    }
+
     private UserDto AddUser(string name)
     {
         var user = new UserDto(Guid.NewGuid(), name, "usuario@example.com");
@@ -204,6 +224,7 @@ public class MaterializedViewTests : IDisposable
         public List<Guid> RequestedIds { get; } = new();
         public int Lookups { get; set; }
         public bool Unavailable { get; set; }
+        public DependencyUnavailableException? DependencyFailure { get; set; }
 
         public bool Exist(Guid id) => throw new InvalidOperationException("No debe usarse /exists para materializar.");
 
@@ -211,6 +232,7 @@ public class MaterializedViewTests : IDisposable
         {
             Lookups++;
             RequestedIds.Add(id);
+            if (DependencyFailure is not null) throw DependencyFailure;
             if (Unavailable) throw new HttpRequestException("UserManager no disponible.");
             return Users.GetValueOrDefault(id);
         }

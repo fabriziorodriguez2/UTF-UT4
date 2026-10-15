@@ -18,7 +18,7 @@ public class UsuariosHttpClient : IUsuarios
 
     public bool Exist(Guid id)
     {
-        var resp = _http.GetAsync($"/users/{id}/exists").GetAwaiter().GetResult();
+        using var resp = _http.GetAsync($"/users/{id}/exists").GetAwaiter().GetResult();
 
         if (resp.StatusCode == HttpStatusCode.NotFound)
             return false;
@@ -29,7 +29,7 @@ public class UsuariosHttpClient : IUsuarios
 
     public UserDto? GetById(Guid id)
     {
-        var resp = _http.GetAsync($"/users/{id}").GetAwaiter().GetResult();
+        using var resp = _http.GetAsync($"/users/{id}").GetAwaiter().GetResult();
 
         if (resp.StatusCode == HttpStatusCode.NotFound)
             return null;
