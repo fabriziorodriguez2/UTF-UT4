@@ -1,4 +1,4 @@
-# Mini Gestor de Proyectos — TFU UT3 (Grupo 3)
+# Mini Gestor de Proyectos — TFU UT4 (Grupo 3)
 
 Aplicación estilo Trello/Jira donde varios usuarios comparten un dashboard y
 gestionan las tareas de cada proyecto, con su cumplimiento y asignaciones.
@@ -7,6 +7,14 @@ Este repositorio contiene el **esqueleto** (estructura de carpetas + firmas de
 funciones a implementar) del sistema, derivado del **Diagrama de Componentes UML**
 de la TFU. El código está pensado para levantarse con `docker compose` y probarse
 como una **API REST** con `curl` o Postman.
+
+## UPDATE: Se agregaron a este repositorio los patrones de diseño para realizar el TFU de la UT4. 
+**Patrones implemntados:** 
+- Retry
+- Circuit Breaker
+- Cache-aside
+- Gatekeeper
+- Gateway Offloading
 
 ## Conceptos de la UT3 que demuestra la arquitectura
 
